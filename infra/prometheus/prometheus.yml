@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service:8081']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'product-service'
+    static_configs:
+      - targets: ['product-service:8082']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:8083']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service:8084']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'download-service'
+    static_configs:
+      - targets: ['download-service:8085']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'review-service'
+    static_configs:
+      - targets: ['review-service:8086']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8087']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'report-service'
+    static_configs:
+      - targets: ['report-service:8088']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8080']
+    metrics_path: /actuator/prometheus

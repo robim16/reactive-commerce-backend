@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: payment-service
+  config:
+    import: optional:configserver:${SPRING_CLOUD_CONFIG_URI:http://localhost:8888}
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://rcadmin:rcpassword@localhost:27017/payment_db?authSource=admin}
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:mock-gateway}  # mock-gateway en local, vacío en prod
+
+server:
+  port: 8084
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka}
+  instance:
+    prefer-ip-address: true
+
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+payment:
+  commission-rate: ${PAYMENT_COMMISSION_RATE:0.20}
+  gateway:
+    base-url:  ${PAYMENT_GATEWAY_URL:https://api.stripe.com}
+    api-key:   ${PAYMENT_GATEWAY_API_KEY:test-key}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      paymentGateway:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        slowCallDurationThreshold: 10s
+        slowCallRateThreshold: 80
+  retry:
+    instances:
+      paymentGateway:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 3
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+        # Errores definitivos del gateway — NO reintentar
+        ignoreExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException.PaymentRequired
+          - org.springframework.web.reactive.function.client.WebClientResponseException.UnprocessableEntity
+          - org.springframework.web.reactive.function.client.WebClientResponseException.BadRequest
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  pattern:
+    console: '{"timestamp":"%d{ISO8601}","level":"%p","service":"payment-service","traceId":"%X{traceId}","spanId":"%X{spanId}","message":"%m"}%n'

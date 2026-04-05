@@ -1,0 +1,43 @@
+# Configuración global compartida por todos los microservicios
+# Accesible vía Spring Cloud Config Server
+
+platform:
+  commission-rate: 0.20
+  max-upload-size-mb: 500
+  allowed-formats: ZIP,PNG,JPG,SVG,PDF,AI,PSD
+  min-price: 0.99
+  download-max-attempts: 5
+  refund-window-days: 7
+  refund-max-downloads: 3
+
+feature-flags:
+  oauth2-enabled: true
+  email-notifications-enabled: true
+  sse-enabled: true
+  reports-enabled: true
+
+rate-limiting:
+  default-requests-per-second: 10
+  default-burst-capacity: 20
+  auth-requests-per-minute: 5
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+  retry:
+    instances:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+
+logging:
+  level:
+    com.reactivecommerce: INFO
+    reactor.kafka: WARN
+    org.springframework.data.r2dbc: WARN

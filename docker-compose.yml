@@ -1,0 +1,290 @@
+version: '3.9'
+
+networks:
+  reactive-commerce:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  mongodb-data:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+
+services:
+
+  # ─── MENSAJERÍA ──────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes: [zookeeper-data:/var/lib/zookeeper/data]
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      zookeeper: {condition: service_healthy}
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes: [kafka-data:/var/lib/kafka/data]
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports: ["9093:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: reactive-commerce
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  # ─── PERSISTENCIA ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rcadmin
+      POSTGRES_PASSWORD: rcpassword
+      POSTGRES_DB: reactive_commerce
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rcadmin"]
+      interval: 10s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: rcadmin
+      MONGO_INITDB_ROOT_PASSWORD: rcpassword
+    ports: ["27017:27017"]
+    volumes: [mongodb-data:/data/db]
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass rcredis
+    ports: ["6379:6379"]
+    volumes: [redis-data:/data]
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "rcredis", "ping"]
+      interval: 10s
+      retries: 5
+
+  # ─── OBSERVABILIDAD ──────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports: ["9090:9090"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks: [reactive-commerce]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3001:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+    networks: [reactive-commerce]
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports: ["9411:9411"]
+    networks: [reactive-commerce]
+
+  loki:
+    image: grafana/loki:latest
+    ports: ["3100:3100"]
+    volumes: [loki-data:/loki]
+    networks: [reactive-commerce]
+
+  # ─── INFRAESTRUCTURA DE SERVICIOS ────────────────
+  config-service:
+    build: ./config-service
+    ports: ["8888:8888"]
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 15s
+      retries: 5
+
+  eureka-service:
+    build: ./eureka-service
+    ports: ["8761:8761"]
+    depends_on:
+      config-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      retries: 5
+
+  api-gateway:
+    build: ./api-gateway
+    ports: ["8080:8080"]
+    depends_on:
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+    networks: [reactive-commerce]
+
+  # ─── SERVICIOS DE NEGOCIO ────────────────────────
+  auth-service:
+    build: ./auth-service
+    ports: ["8081:8081"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
+      SPRING_R2DBC_USERNAME: rcadmin
+      SPRING_R2DBC_PASSWORD: rcpassword
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: rcredis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  product-service:
+    build: ./product-service
+    ports: ["8082:8082"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
+      SPRING_R2DBC_USERNAME: rcadmin
+      SPRING_R2DBC_PASSWORD: rcpassword
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: rcredis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  order-service:
+    build: ./order-service
+    ports: ["8083:8083"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
+      SPRING_R2DBC_USERNAME: rcadmin
+      SPRING_R2DBC_PASSWORD: rcpassword
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  payment-service:
+    build: ./payment-service
+    ports: ["8084:8084"]
+    depends_on:
+      mongodb: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/payment_db?authSource=admin
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  download-service:
+    build: ./download-service
+    ports: ["8085:8085"]
+    depends_on:
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  review-service:
+    build: ./review-service
+    ports: ["8086:8086"]
+    depends_on:
+      mongodb: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/review_db?authSource=admin
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  notification-service:
+    build: ./notification-service
+    ports: ["8087:8087"]
+    depends_on:
+      mongodb: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/notification_db?authSource=admin
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
+
+  report-service:
+    build: ./report-service
+    ports: ["8088:8088"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      eureka-service: {condition: service_healthy}
+    environment:
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
+      SPRING_R2DBC_USERNAME: rcadmin
+      SPRING_R2DBC_PASSWORD: rcpassword
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PASSWORD: rcredis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks: [reactive-commerce]
