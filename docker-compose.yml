@@ -1,5 +1,9 @@
 version: '3.9'
 
+# El build context de cada servicio apunta a la RAÍZ del proyecto (.)
+# para que el Dockerfile pueda acceder al pom.xml padre y al src/ de cada módulo.
+# Cada servicio tiene su propio Dockerfile en {servicio}/Dockerfile.
+
 networks:
   reactive-commerce:
     driver: bridge
@@ -10,13 +14,17 @@ volumes:
   redis-data:
   kafka-data:
   zookeeper-data:
+  localstack-data:
   grafana-data:
   prometheus-data:
   loki-data:
 
 services:
 
-  # ─── MENSAJERÍA ──────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # MENSAJERÍA
+  # ═══════════════════════════════════════════════════════════════
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
@@ -27,6 +35,7 @@ services:
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
   kafka:
@@ -37,68 +46,126 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # LISTENERS: interfaces en las que el broker escucha (dentro del contenedor)
+      #   PLAINTEXT     → inter-container: kafka:29092
+      #   PLAINTEXT_HOST → host machine:   0.0.0.0:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+
+      # ADVERTISED_LISTENERS: lo que el broker anuncia a los clientes en los metadatos.
+      # Los servicios dentro de Docker reciben kafka:29092 como dirección del líder.
+      # Los clientes del host (Kafka UI, herramientas locales) reciben localhost:9092.
+      # Sin esta distinción el broker anuncia localhost:9092 a contenedores internos
+      # → los contenedores intentan conectar a su propio localhost → NotLeaderOrFollowerException.
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Reduce el tiempo de elección de líder al arrancar
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     volumes: [kafka-data:/var/lib/kafka/data]
     networks: [reactive-commerce]
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      # Verificar contra el listener interno (29092), no el externo (9092)
+      # para que el healthcheck funcione dentro del contenedor
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:29092"]
       interval: 15s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports: ["9093:8080"]
+    depends_on:
+      kafka: {condition: service_healthy}
     environment:
       KAFKA_CLUSTERS_0_NAME: reactive-commerce
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     networks: [reactive-commerce]
 
-  # ─── PERSISTENCIA ────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # PERSISTENCIA
+  # ═══════════════════════════════════════════════════════════════
+
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: rcadmin
-      POSTGRES_PASSWORD: rcpassword
-      POSTGRES_DB: reactive_commerce
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB}
     ports: ["5432:5432"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks: [reactive-commerce]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rcadmin"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
   mongodb:
     image: mongo:7
     environment:
-      MONGO_INITDB_ROOT_USERNAME: rcadmin
-      MONGO_INITDB_ROOT_PASSWORD: rcpassword
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     ports: ["27017:27017"]
-    volumes: [mongodb-data:/data/db]
+    volumes:
+      - mongodb-data:/data/db
+      - ./infra/mongodb/init-dbs.js:/docker-entrypoint-initdb.d/init-dbs.js:ro
     networks: [reactive-commerce]
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    command: redis-server --requirepass rcredis
+    command: redis-server --requirepass ${SPRING_DATA_REDIS_PASSWORD}
     ports: ["6379:6379"]
     volumes: [redis-data:/data]
     networks: [reactive-commerce]
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "rcredis", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${SPRING_DATA_REDIS_PASSWORD}", "ping"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
-  # ─── OBSERVABILIDAD ──────────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # AWS LOCAL (LocalStack)
+  # ═══════════════════════════════════════════════════════════════
+
+  localstack:
+    image: localstack/localstack:3.4
+    ports: ["4566:4566"]
+    environment:
+      SERVICES:              s3,dynamodb,ses,lambda
+      DEFAULT_REGION:        ${AWS_REGION}
+      AWS_ACCESS_KEY_ID:     ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      LAMBDA_EXECUTOR:       local
+      DATA_DIR:              /var/lib/localstack/data
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - ./infra/localstack/init:/etc/localstack/init/ready.d
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ═══════════════════════════════════════════════════════════════
+  # OBSERVABILIDAD
+  # ═══════════════════════════════════════════════════════════════
+
   prometheus:
     image: prom/prometheus:latest
     ports: ["9090:9090"]
@@ -128,18 +195,26 @@ services:
     volumes: [loki-data:/loki]
     networks: [reactive-commerce]
 
-  # ─── INFRAESTRUCTURA DE SERVICIOS ────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # INFRAESTRUCTURA DE SERVICIOS
+  # ═══════════════════════════════════════════════════════════════
+
   config-service:
-    build: ./config-service
+    build:
+      context: .
+      dockerfile: config-service/Dockerfile
     ports: ["8888:8888"]
     networks: [reactive-commerce]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
       interval: 15s
+      timeout: 5s
       retries: 5
 
   eureka-service:
-    build: ./eureka-service
+    build:
+      context: .
+      dockerfile: eureka-service/Dockerfile
     ports: ["8761:8761"]
     depends_on:
       config-service: {condition: service_healthy}
@@ -149,142 +224,204 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
       interval: 15s
+      timeout: 5s
       retries: 5
 
   api-gateway:
-    build: ./api-gateway
-    ports: ["8080:8080"]
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports: ["8089:8089"]
     depends_on:
       eureka-service: {condition: service_healthy}
+      redis:          {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
+      SPRING_DATA_REDIS_HOST:               redis
+      SPRING_DATA_REDIS_PASSWORD:           ${SPRING_DATA_REDIS_PASSWORD}
+      JWT_SECRET:                           ${JWT_SECRET}
     networks: [reactive-commerce]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-  # ─── SERVICIOS DE NEGOCIO ────────────────────────
+  # ═══════════════════════════════════════════════════════════════
+  # SERVICIOS DE NEGOCIO
+  # ═══════════════════════════════════════════════════════════════
+
   auth-service:
-    build: ./auth-service
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
     ports: ["8081:8081"]
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      postgres:       {condition: service_healthy}
+      redis:          {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
-      SPRING_R2DBC_USERNAME: rcadmin
-      SPRING_R2DBC_PASSWORD: rcpassword
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PASSWORD: rcredis
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_R2DBC_URL:                     r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_R2DBC_USERNAME:                ${POSTGRES_USER}
+      SPRING_R2DBC_PASSWORD:                ${POSTGRES_PASSWORD}
+      DB_HOST:                              postgres
+      SPRING_DATA_REDIS_HOST:               redis
+      SPRING_DATA_REDIS_PASSWORD:           ${SPRING_DATA_REDIS_PASSWORD}
+      JWT_SECRET:                           ${JWT_SECRET}
     networks: [reactive-commerce]
 
   product-service:
-    build: ./product-service
+    build:
+      context: .
+      dockerfile: product-service/Dockerfile
     ports: ["8082:8082"]
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      postgres:       {condition: service_healthy}
+      redis:          {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
+      localstack:     {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
-      SPRING_R2DBC_USERNAME: rcadmin
-      SPRING_R2DBC_PASSWORD: rcpassword
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PASSWORD: rcredis
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_R2DBC_URL:                     r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_R2DBC_USERNAME:                ${POSTGRES_USER}
+      SPRING_R2DBC_PASSWORD:                ${POSTGRES_PASSWORD}
+      SPRING_DATA_REDIS_HOST:               redis
+      SPRING_DATA_REDIS_PASSWORD:           ${SPRING_DATA_REDIS_PASSWORD}
+      DB_HOST:                              postgres
+      AWS_REGION:                           ${AWS_REGION}
+      AWS_ACCESS_KEY_ID:                    ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY:                ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET:                        ${AWS_S3_BUCKET}
+      AWS_ENDPOINT:                         http://localstack:4566
     networks: [reactive-commerce]
 
   order-service:
-    build: ./order-service
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
     ports: ["8083:8083"]
     depends_on:
-      postgres: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      postgres:       {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
-      SPRING_R2DBC_USERNAME: rcadmin
-      SPRING_R2DBC_PASSWORD: rcpassword
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_R2DBC_URL:                     r2dbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_R2DBC_USERNAME:                ${POSTGRES_USER}
+      SPRING_R2DBC_PASSWORD:                ${POSTGRES_PASSWORD}
+      DB_HOST:                              postgres
     networks: [reactive-commerce]
 
   payment-service:
-    build: ./payment-service
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
     ports: ["8084:8084"]
     depends_on:
-      mongodb: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      mongodb:        {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/payment_db?authSource=admin
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_DATA_MONGODB_URI:              mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/payment_db?authSource=admin
+      PAYMENT_COMMISSION_RATE:              ${PAYMENT_COMMISSION_RATE}
+      PAYMENT_GATEWAY_URL:                  ${PAYMENT_GATEWAY_URL}
+      PAYMENT_GATEWAY_API_KEY:              ${PAYMENT_GATEWAY_API_KEY}
+      SPRING_PROFILES_ACTIVE:               ${SPRING_PROFILES_ACTIVE}
     networks: [reactive-commerce]
 
   download-service:
-    build: ./download-service
+    build:
+      context: .
+      dockerfile: download-service/Dockerfile
     ports: ["8085:8085"]
     depends_on:
-      kafka: {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
+      localstack:     {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      AWS_REGION:                           ${AWS_REGION}
+      AWS_ACCESS_KEY_ID:                    ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY:                ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET:                        ${AWS_S3_BUCKET}
+      AWS_DYNAMODB_TABLE:                   ${AWS_DYNAMODB_TABLE}
+      AWS_ENDPOINT:                         http://localstack:4566
+      DOWNLOAD_MAX_DOWNLOADS:               ${DOWNLOAD_MAX_DOWNLOADS}
     networks: [reactive-commerce]
 
   review-service:
-    build: ./review-service
+    build:
+      context: .
+      dockerfile: review-service/Dockerfile
     ports: ["8086:8086"]
     depends_on:
-      mongodb: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      mongodb:        {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/review_db?authSource=admin
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_DATA_MONGODB_URI:              mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/review_db?authSource=admin
     networks: [reactive-commerce]
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
     ports: ["8087:8087"]
     depends_on:
-      mongodb: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      mongodb:        {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
+      localstack:     {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_DATA_MONGODB_URI: mongodb://rcadmin:rcpassword@mongodb:27017/notification_db?authSource=admin
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_DATA_MONGODB_URI:              mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/notification_db?authSource=admin
+      AWS_REGION:                           ${AWS_REGION}
+      AWS_ACCESS_KEY_ID:                    ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY:                ${AWS_SECRET_ACCESS_KEY}
+      AWS_SES_FROM:                         ${AWS_SES_FROM}
+      AWS_SQS_QUEUE_URL:                    ${AWS_SQS_QUEUE_URL}
+      AWS_ENDPOINT:                         http://localstack:4566
     networks: [reactive-commerce]
 
   report-service:
-    build: ./report-service
+    build:
+      context: .
+      dockerfile: report-service/Dockerfile
     ports: ["8088:8088"]
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-      kafka: {condition: service_healthy}
+      mongodb:        {condition: service_healthy}
+      kafka:          {condition: service_healthy}
       eureka-service: {condition: service_healthy}
+      localstack:     {condition: service_healthy}
     environment:
-      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_URI:              http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
-      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/reactive_commerce
-      SPRING_R2DBC_USERNAME: rcadmin
-      SPRING_R2DBC_PASSWORD: rcpassword
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PASSWORD: rcredis
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
+      SPRING_DATA_MONGODB_URI:              mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/report_db?authSource=admin
+      AWS_REGION:                           ${AWS_REGION}
+      AWS_ACCESS_KEY_ID:                    ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY:                ${AWS_SECRET_ACCESS_KEY}
+      AWS_S3_BUCKET:                        ${AWS_S3_BUCKET}
+      AWS_LAMBDA_REPORT_FUNCTION:           ${AWS_LAMBDA_REPORT_FUNCTION}
+      AWS_ENDPOINT:                         http://localstack:4566
     networks: [reactive-commerce]

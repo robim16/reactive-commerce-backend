@@ -1,0 +1,85 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-orders-table
+      author: reactivecommerce
+      changes:
+        - createTable:
+            tableName: orders
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: buyer_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: asset_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: amount
+                  type: numeric(12,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+                  defaultValue: PENDING
+              - column:
+                  name: failure_reason
+                  type: text
+              - column:
+                  name: transaction_id
+                  type: varchar(255)
+              - column:
+                  name: created_at
+                  type: timestamptz
+                  constraints:
+                    nullable: false
+                  defaultValueComputed: now()
+              - column:
+                  name: updated_at
+                  type: timestamptz
+                  constraints:
+                    nullable: false
+                  defaultValueComputed: now()
+              - column:
+                  name: expires_at
+                  type: timestamptz
+
+  - changeSet:
+      id: 002-orders-indexes
+      author: reactivecommerce
+      changes:
+        - createIndex:
+            indexName: idx_orders_buyer
+            tableName: orders
+            columns:
+              - column: {name: buyer_id}
+        - createIndex:
+            indexName: idx_orders_status
+            tableName: orders
+            columns:
+              - column: {name: status}
+        - createIndex:
+            indexName: idx_orders_created
+            tableName: orders
+            columns:
+              - column:
+                  name: created_at
+                  descending: true
+        - createIndex:
+            indexName: idx_orders_buyer_asset
+            tableName: orders
+            unique: true
+            columns:
+              - column: {name: buyer_id}
+              - column: {name: asset_id}

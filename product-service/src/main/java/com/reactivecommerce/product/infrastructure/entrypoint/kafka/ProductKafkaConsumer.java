@@ -1,11 +1,11 @@
 package com.reactivecommerce.product.infrastructure.entrypoint.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.reactivecommerce.product.domain.port.out.AssetRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.kafka.receiver.KafkaReceiver;
@@ -31,13 +31,14 @@ public class ProductKafkaConsumer {
     public void startConsuming() {
         kafkaReceiver.receive()
             .flatMap(this::process)
-            .doOnError(e -> log.error("Error consuming Kafka message: {}", e.getMessage()))
+            .doOnError((Throwable e) -> log.error("Error consuming Kafka message: {}", e.getMessage()))
             .retry()
             .subscribe();
     }
 
     private Mono<Void> process(ReceiverRecord<String, String> record) {
-        return Mono.fromCallable(() -> objectMapper.readValue(record.value(), Map.class))
+        return Mono.fromCallable(() -> objectMapper.readValue(
+                record.value(), new TypeReference<Map<String, Object>>() {}))
             .flatMap(payload -> {
                 String topic = record.topic();
                 log.info("Received event on topic={} key={}", topic, record.key());
@@ -51,7 +52,6 @@ public class ProductKafkaConsumer {
             .onErrorResume(e -> Mono.empty());
     }
 
-    @SuppressWarnings("unchecked")
     private Mono<Void> handleReviewCreated(Map<String, Object> payload) {
         UUID assetId = UUID.fromString(payload.get("assetId").toString());
         double newRating = Double.parseDouble(payload.get("averageRating").toString());

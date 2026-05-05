@@ -6,21 +6,29 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="eureka-service" />
-        <module name="auth-service" />
         <module name="config-service" />
-        <module name="payment-service" />
-        <module name="download-service" />
         <module name="review-service" />
-        <module name="api-gateway" />
         <module name="product-service" />
+        <module name="download-service (1)" />
+        <module name="payment-service (1)" />
+        <module name="notification-service" />
+        <module name="auth-service" />
+        <module name="api-gateway" />
         <module name="report-service" />
         <module name="order-service" />
-        <module name="notification-service" />
+        <module name="eureka-service (1)" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="eureka-service (1)" target="1.8" />
+      <module name="auth-service (1)" target="1.8" />
+      <module name="config-service (1)" target="1.8" />
+      <module name="download-service" target="1.8" />
+      <module name="eureka-service" target="1.8" />
+      <module name="notification-service (1)" target="1.8" />
+      <module name="order-service (1)" target="1.8" />
+      <module name="payment-service" target="21" />
+      <module name="product-service (1)" target="1.8" />
+      <module name="report-service (1)" target="1.8" />
     </bytecodeTargetLevel>
   </component>
 </project>

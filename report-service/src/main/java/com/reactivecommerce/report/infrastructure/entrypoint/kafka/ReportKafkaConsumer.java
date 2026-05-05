@@ -64,7 +64,7 @@ public class ReportKafkaConsumer {
             })
             .doOnSuccess(v -> record.receiverOffset().acknowledge())
             .doOnError(e -> log.error("Error processing topic={} key={}: {}",
-                record.topic(), record.key(), e.getMessage()))
+                record.topic(), record.key(), e))
             .onErrorResume(e -> {
                 // Confirm offset to avoid partition blocking; add to DLQ in production
                 record.receiverOffset().acknowledge();

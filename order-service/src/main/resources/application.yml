@@ -7,6 +7,12 @@ spring:
     url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5432/reactive_commerce}
     username: ${SPRING_R2DBC_USERNAME:rcadmin}
     password: ${SPRING_R2DBC_PASSWORD:rcpassword}
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/reactive_commerce
+    user: ${SPRING_R2DBC_USERNAME:rcadmin}
+    password: ${SPRING_R2DBC_PASSWORD:rcpassword}
+    enabled: true
 
 server:
   port: 8083
@@ -21,7 +27,6 @@ eureka:
 kafka:
   bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
-# URL del Product Service — lb:// activa el load balancing de Eureka
 services:
   product-service:
     base-url: ${PRODUCT_SERVICE_URL:lb://product-service}
@@ -43,8 +48,6 @@ resilience4j:
         waitDuration: 500ms
         enableExponentialBackoff: true
         exponentialBackoffMultiplier: 2
-        # Solo reintentar errores transitorios (timeout, 5xx)
-        # No reintentar 4xx (asset no encontrado = error definitivo)
         retryExceptions:
           - java.io.IOException
           - java.util.concurrent.TimeoutException

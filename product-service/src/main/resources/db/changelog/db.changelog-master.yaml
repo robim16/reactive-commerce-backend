@@ -1,0 +1,140 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-assets-table
+      author: reactivecommerce
+      changes:
+        - createTable:
+            tableName: assets
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: title
+                  type: varchar(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: text
+              - column:
+                  name: category
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tags_json
+                  type: text
+              - column:
+                  name: price
+                  type: numeric(12,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: license
+                  type: varchar(100)
+              - column:
+                  name: status
+                  type: varchar(30)
+                  constraints:
+                    nullable: false
+                  defaultValue: PENDING_MODERATION
+              - column:
+                  name: creator_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: s3_key
+                  type: varchar(1000)
+              - column:
+                  name: thumbnail_s3_key
+                  type: varchar(1000)
+              - column:
+                  name: format
+                  type: varchar(20)
+              - column:
+                  name: file_size_bytes
+                  type: bigint
+              - column:
+                  name: average_rating
+                  type: numeric(3,2)
+                  defaultValueNumeric: 0.0
+              - column:
+                  name: total_reviews
+                  type: int
+                  defaultValueNumeric: 0
+              - column:
+                  name: total_sales
+                  type: int
+                  defaultValueNumeric: 0
+              - column:
+                  name: rejection_reason
+                  type: text
+              - column:
+                  name: moderated_by
+                  type: uuid
+              - column:
+                  name: moderated_at
+                  type: timestamptz
+              - column:
+                  name: created_at
+                  type: timestamptz
+                  constraints:
+                    nullable: false
+                  defaultValueComputed: now()
+              - column:
+                  name: updated_at
+                  type: timestamptz
+                  constraints:
+                    nullable: false
+                  defaultValueComputed: now()
+
+  - changeSet:
+      id: 002-assets-indexes
+      author: reactivecommerce
+      changes:
+        - createIndex:
+            indexName: idx_assets_status
+            tableName: assets
+            columns:
+              - column: {name: status}
+        - createIndex:
+            indexName: idx_assets_creator
+            tableName: assets
+            columns:
+              - column: {name: creator_id}
+        - createIndex:
+            indexName: idx_assets_category
+            tableName: assets
+            columns:
+              - column: {name: category}
+        - createIndex:
+            indexName: idx_assets_price
+            tableName: assets
+            columns:
+              - column: {name: price}
+        - createIndex:
+            indexName: idx_assets_rating
+            tableName: assets
+            columns:
+              - column:
+                  name: average_rating
+                  descending: true
+        - createIndex:
+            indexName: idx_assets_sales
+            tableName: assets
+            columns:
+              - column:
+                  name: total_sales
+                  descending: true
+        - createIndex:
+            indexName: idx_assets_created
+            tableName: assets
+            columns:
+              - column:
+                  name: created_at
+                  descending: true

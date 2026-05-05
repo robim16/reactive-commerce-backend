@@ -42,10 +42,10 @@ public class EmailVerificationAdapter implements EmailVerificationPort {
         String key   = PREFIX + token;
 
         return redisTemplate.opsForValue()
-            .set(key, userId.toString(), TOKEN_TTL)
-            .thenReturn(token)
-            .doOnSuccess(t -> log.debug(
-                "Verification token created for userId={} ttl={}h", userId, TOKEN_TTL.toHours()));
+                .set(key, userId.toString(), TOKEN_TTL)
+                .thenReturn(token)
+                .doOnSuccess(t -> log.debug(
+                        "Verification token created for userId={} ttl={}h", userId, TOKEN_TTL.toHours()));
     }
 
     /**
@@ -55,13 +55,13 @@ public class EmailVerificationAdapter implements EmailVerificationPort {
     @Override
     public Mono<UUID> validateToken(String token) {
         return redisTemplate.opsForValue()
-            .get(PREFIX + token)
-            .map(UUID::fromString)
-            .doOnSuccess(userId -> {
-                if (userId != null) {
-                    log.debug("Token validated for userId={}", userId);
-                }
-            });
+                .get(PREFIX + token)
+                .map(UUID::fromString)
+                .doOnSuccess(userId -> {
+                    if (userId != null) {
+                        log.debug("Token validated for userId={}", userId);
+                    }
+                });
     }
 
     /**
@@ -70,7 +70,7 @@ public class EmailVerificationAdapter implements EmailVerificationPort {
     @Override
     public Mono<Void> deleteToken(String token) {
         return redisTemplate.delete(PREFIX + token)
-            .then()
-            .doOnSuccess(v -> log.debug("Verification token deleted: {}", token));
+                .then()
+                .doOnSuccess(v -> log.debug("Verification token deleted: {}", token));
     }
 }

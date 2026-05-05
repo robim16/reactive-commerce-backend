@@ -7,6 +7,12 @@ spring:
     url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5432/reactive_commerce}
     username: ${SPRING_R2DBC_USERNAME:rcadmin}
     password: ${SPRING_R2DBC_PASSWORD:rcpassword}
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/reactive_commerce
+    user: ${SPRING_R2DBC_USERNAME:rcadmin}
+    password: ${SPRING_R2DBC_PASSWORD:rcpassword}
+    enabled: true
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
@@ -27,11 +33,12 @@ kafka:
   bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 aws:
-  region: ${AWS_REGION:us-east-1}
+  region:     ${AWS_REGION:us-east-1}
   access-key: ${AWS_ACCESS_KEY_ID:local}
   secret-key: ${AWS_SECRET_ACCESS_KEY:local}
   s3:
     bucket: ${AWS_S3_BUCKET:reactive-commerce-assets}
+  endpoint:   ${AWS_ENDPOINT:}
 
 management:
   endpoints:
@@ -46,15 +53,6 @@ management:
     sampling:
       probability: 1.0
 
-resilience4j:
-  bulkhead:
-    instances:
-      s3:
-        maxConcurrentCalls: 10
-  retry:
-    instances:
-      s3:
-        maxAttempts: 3
-        waitDuration: 500ms
-        enableExponentialBackoff: true
-        exponentialBackoffMultiplier: 2
+logging:
+  pattern:
+    console: '{"timestamp":"%d{ISO8601}","level":"%p","service":"product-service","traceId":"%X{traceId}","spanId":"%X{spanId}","message":"%m"}%n'

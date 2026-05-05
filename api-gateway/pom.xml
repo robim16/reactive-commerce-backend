@@ -14,28 +14,33 @@
     <name>api-gateway</name>
 
     <dependencies>
-        <!-- ── Spring Cloud Gateway (WebFlux) ──────────────────────────── -->
+        <!-- ── Spring Cloud Gateway (WebFlux) ──────────────────────────────
+             REEMPLAZA spring-boot-starter-webflux.
+             spring-cloud-starter-gateway ya incluye WebFlux internamente.
+             Tener ambos causa conflictos de autoconfiguración. -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
         </dependency>
 
-        <!-- ── Spring Security (WebFlux) — para SecurityConfig ─────────── -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
-
-        <!-- ── Redis — rate limiter de Spring Cloud Gateway ───────────── -->
+        <!-- ── Redis — rate limiter de Spring Cloud Gateway ────────────────
+             Requerido por RequestRateLimiter filter + KeyResolver bean. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
         </dependency>
 
-        <!-- ── Service Discovery — Eureka client (lb:// routing) ───────── -->
+        <!-- ── Service Discovery ────────────────────────────────────────────
+             Eureka client para resolución lb://service-name en rutas. -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- ── Load Balancer — requerido por lb:// en rutas del gateway ─── -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
 
         <!-- ── Config Server client ─────────────────────────────────────── -->
@@ -44,7 +49,7 @@
             <artifactId>spring-cloud-starter-config</artifactId>
         </dependency>
 
-        <!-- ── JWT validation in JwtAuthFilter ──────────────────────────── -->
+        <!-- ── JWT — validación del token en JwtAuthFilter ─────────────── -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -81,14 +86,14 @@
             <artifactId>zipkin-reporter-brave</artifactId>
         </dependency>
 
-        <!-- ── Lombok ────────────────────────────────────────────────────── -->
+        <!-- ── Lombok ───────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
 
-        <!-- ── Test ──────────────────────────────────────────────────────── -->
+        <!-- ── Test ─────────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

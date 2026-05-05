@@ -10,6 +10,8 @@ spring:
           enabled: true
           lower-case-service-id: true
       routes:
+
+        # ── Auth Service — rutas públicas con rate limiting ──────────────────
         - id: auth-service
           uri: lb://auth-service
           predicates:
@@ -21,16 +23,32 @@ spring:
                 redis-rate-limiter.burstCapacity: 20
                 redis-rate-limiter.requestedTokens: 1
 
-        - id: product-service
+        # ── Product Service — rutas PÚBLICAS (GET catálogo y detalle) ────────
+        # GET /api/v1/assets y GET /api/v1/assets/{id} no requieren token.
+        # Si el token está presente se extrae el contexto de usuario (opcional).
+        - id: product-service-public
           uri: lb://product-service
           predicates:
             - Path=/api/v1/assets/**
+            - Method=GET
+          filters:
+            - name: JwtAuthFilter
+              args:
+                required: false   # token opcional — anónimos pueden ver el catálogo
+
+        # ── Product Service — rutas PRIVADAS (escritura: crear, moderar) ─────
+        - id: product-service-private
+          uri: lb://product-service
+          predicates:
+            - Path=/api/v1/assets/**
+            - Method=POST,PUT,PATCH,DELETE
           filters:
             - name: JwtAuthFilter
             - name: RoleFilter
               args:
-                allowedRoles: ADMIN,CREATOR,BUYER,MODERATOR
+                allowedRoles: ADMIN,CREATOR,MODERATOR
 
+        # ── Order Service ────────────────────────────────────────────────────
         - id: order-service
           uri: lb://order-service
           predicates:
@@ -39,8 +57,9 @@ spring:
             - name: JwtAuthFilter
             - name: RoleFilter
               args:
-                allowedRoles: ADMIN,BUYER
+                allowedRoles: ADMIN,BUYER,CREATOR
 
+        # ── Payment Service ──────────────────────────────────────────────────
         - id: payment-service
           uri: lb://payment-service
           predicates:
@@ -48,6 +67,7 @@ spring:
           filters:
             - name: JwtAuthFilter
 
+        # ── Download Service ─────────────────────────────────────────────────
         - id: download-service
           uri: lb://download-service
           predicates:
@@ -55,13 +75,29 @@ spring:
           filters:
             - name: JwtAuthFilter
 
-        - id: review-service
+        # ── Review Service — GET público, POST/PUT privado ───────────────────
+        - id: review-service-public
           uri: lb://review-service
           predicates:
             - Path=/api/v1/reviews/**
+            - Method=GET
           filters:
             - name: JwtAuthFilter
+              args:
+                required: false
 
+        - id: review-service-private
+          uri: lb://review-service
+          predicates:
+            - Path=/api/v1/reviews/**
+            - Method=POST,PUT,DELETE
+          filters:
+            - name: JwtAuthFilter
+            - name: RoleFilter
+              args:
+                allowedRoles: ADMIN,BUYER,MODERATOR
+
+        # ── Notification Service ─────────────────────────────────────────────
         - id: notification-service
           uri: lb://notification-service
           predicates:
@@ -69,6 +105,7 @@ spring:
           filters:
             - name: JwtAuthFilter
 
+        # ── Report Service ───────────────────────────────────────────────────
         - id: report-service
           uri: lb://report-service
           predicates:
@@ -91,7 +128,7 @@ spring:
       password: ${SPRING_DATA_REDIS_PASSWORD:rcredis}
 
 server:
-  port: 8080
+  port: 8089
 
 eureka:
   client:

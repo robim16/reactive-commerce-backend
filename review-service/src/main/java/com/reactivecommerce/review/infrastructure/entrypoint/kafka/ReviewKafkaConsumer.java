@@ -1,5 +1,6 @@
 package com.reactivecommerce.review.infrastructure.entrypoint.kafka;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -50,9 +51,9 @@ public class ReviewKafkaConsumer {
             .subscribe();
     }
 
-    @SuppressWarnings("unchecked")
     private Mono<Void> process(ReceiverRecord<String, String> record) {
-        return Mono.fromCallable(() -> objectMapper.readValue(record.value(), Map.class))
+        return Mono.fromCallable(() -> objectMapper.readValue(
+                record.value(), new TypeReference<Map<String, Object>>() {}))
             .flatMap(payload -> switch (record.topic()) {
                 case "order.completed" -> handleOrderCompleted(payload);
                 case "order.refunded"  -> handleOrderRefunded(payload);
