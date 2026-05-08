@@ -9,6 +9,21 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
+import java.net.URI;
+
+/**
+ * Configuración AWS del Product Service.
+ *
+ * endpointOverride:
+ *   Si aws.endpoint está definido (ej: http://localstack:4566 en Docker),
+ *   ambos clientes apuntan a LocalStack en lugar de AWS real.
+ *   En producción dejar AWS_ENDPOINT vacío → usa AWS real.
+ *
+ * forcePathStyle en S3AsyncClient:
+ *   LocalStack requiere path-style URLs (http://host/bucket/key)
+ *   en lugar de virtual-hosted (http://bucket.host/key).
+ *   En producción AWS soporta ambos estilos.
+ */
 @Configuration
 public class AwsConfig {
 
@@ -21,21 +36,36 @@ public class AwsConfig {
     @Value("${aws.secret-key:local}")
     private String secretKey;
 
+    @Value("${aws.endpoint:}")
+    private String endpoint;
+
     @Bean
     public S3AsyncClient s3AsyncClient() {
-        return S3AsyncClient.builder()
+        var builder = S3AsyncClient.builder()
             .region(Region.of(region))
-            .credentialsProvider(StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(accessKey, secretKey)))
-            .build();
+            .credentialsProvider(credentials())
+            .forcePathStyle(true); // requerido por LocalStack
+
+        if (!endpoint.isBlank()) {
+            builder.endpointOverride(URI.create(endpoint));
+        }
+        return builder.build();
     }
 
     @Bean
     public S3Presigner s3Presigner() {
-        return S3Presigner.builder()
+        var builder = S3Presigner.builder()
             .region(Region.of(region))
-            .credentialsProvider(StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(accessKey, secretKey)))
-            .build();
+            .credentialsProvider(credentials());
+
+        if (!endpoint.isBlank()) {
+            builder.endpointOverride(URI.create(endpoint));
+        }
+        return builder.build();
+    }
+
+    private StaticCredentialsProvider credentials() {
+        return StaticCredentialsProvider.create(
+            AwsBasicCredentials.create(accessKey, secretKey));
     }
 }
