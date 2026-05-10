@@ -5,9 +5,11 @@ import com.reactivecommerce.product.domain.model.AssetCategory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface SearchAssetsUseCase {
+
     record Query(String text, AssetCategory category, BigDecimal minPrice,
                  BigDecimal maxPrice, Double minRating, String cursor,
                  int pageSize, SortBy sortBy) {}
@@ -15,4 +17,5 @@ public interface SearchAssetsUseCase {
 
     Flux<Asset> search(Query query);
     Mono<Asset> findById(UUID id);
+    Flux<Asset> searchAll(Query query);
 }

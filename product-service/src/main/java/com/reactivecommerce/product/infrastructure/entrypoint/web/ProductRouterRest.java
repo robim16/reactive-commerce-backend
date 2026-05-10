@@ -26,6 +26,7 @@ public class ProductRouterRest {
             .nest(path("/api/v1/assets"), builder -> builder
                 // Catálogo público
                 .GET("",                                                          handler::search)
+                    .GET("/all/created",                                                          handler::searchAll)
                 .GET("/{id}",                                                     handler::findById)
                 // Creator
                 .POST("",               accept(APPLICATION_JSON),                 handler::create)

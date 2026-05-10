@@ -156,4 +156,23 @@ public class ProductHandler {
     private UUID extractUserId(ServerRequest request) {
         return UUID.fromString(request.headers().firstHeader("X-User-Id"));
     }
+
+    public Mono<ServerResponse> searchAll(ServerRequest request) {
+        var query = new SearchAssetsUseCase.Query(
+                request.queryParam("q").orElse(null),
+                request.queryParam("category").map(AssetCategory::valueOf).orElse(null),
+                request.queryParam("minPrice").map(BigDecimal::new).orElse(null),
+                request.queryParam("maxPrice").map(BigDecimal::new).orElse(null),
+                request.queryParam("minRating").map(Double::parseDouble).orElse(null),
+                request.queryParam("cursor").orElse(null),
+                request.queryParam("size").map(Integer::parseInt).orElse(24),
+                request.queryParam("sort")
+                        .map(SearchAssetsUseCase.SortBy::valueOf)
+                        .orElse(SearchAssetsUseCase.SortBy.NEWEST)
+        );
+
+        return ServerResponse.ok().
+                body(searchAssetsUseCase.searchAll(query)
+                        .map(AssetSummaryResponse::from), AssetSummaryResponse.class);
+    }
 }

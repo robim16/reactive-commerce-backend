@@ -15,4 +15,6 @@ public interface AssetRepository {
     Mono<Asset> update(Asset asset);
     /** Elimina el asset por ID. No verifica reglas de negocio — eso es responsabilidad del use case. */
     Mono<Void> deleteById(UUID id);
+
+    Flux<Asset> searchAll(SearchAssetsUseCase.Query query);
 }

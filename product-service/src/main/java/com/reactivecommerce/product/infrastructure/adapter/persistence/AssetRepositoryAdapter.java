@@ -107,6 +107,23 @@ public class AssetRepositoryAdapter implements AssetRepository {
             .doOnSuccess(v -> log.debug("Asset deleted: id={}", id));
     }
 
+    @Override
+    public Flux<Asset> searchAll(SearchAssetsUseCase.Query query) {
+        Flux<AssetEntity> base = r2dbcRepository.findAll();
+
+        return base
+                .filter(e -> query.text() == null
+                        || e.getTitle().toLowerCase().contains(query.text().toLowerCase()))
+                .filter(e -> query.minPrice() == null
+                        || e.getPrice().compareTo(query.minPrice()) >= 0)
+                .filter(e -> query.maxPrice() == null
+                        || e.getPrice().compareTo(query.maxPrice()) <= 0)
+                .filter(e -> query.minRating() == null
+                        || e.getAverageRating() >= query.minRating())
+                .take(query.pageSize())
+                .map(this::toDomain);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     @SneakyThrows

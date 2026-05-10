@@ -27,4 +27,7 @@ public class SearchAssetsUseCaseImpl implements SearchAssetsUseCase {
     public Mono<Asset> findById(UUID id) {
         return assetCachePort.getOrLoad(id, assetRepository.findById(id));
     }
+
+    @Override
+    public Flux<Asset> searchAll(Query query) { return assetRepository.searchAll(query); }
 }
