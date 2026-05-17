@@ -33,8 +33,8 @@ public record RegisterRequest(
 
         @NotBlank(message = "El rol es obligatorio")
         @Pattern(
-                regexp = "^(BUYER|CREATOR)$",
-                message = "El rol debe ser BUYER o CREATOR"
+                regexp = "^(BUYER|CREATOR|ADMIN|MODERATOR)$",
+                message = "El rol debe ser BUYER, ADMIN, MODERATOR o CREATOR"
         )
         String role
 

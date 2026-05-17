@@ -173,6 +173,6 @@ public class ProductHandler {
 
         return ServerResponse.ok().
                 body(searchAssetsUseCase.searchAll(query)
-                        .map(AssetSummaryResponse::from), AssetSummaryResponse.class);
+                        .map(AssetDetailResponse::from), AssetDetailResponse.class);
     }
 }

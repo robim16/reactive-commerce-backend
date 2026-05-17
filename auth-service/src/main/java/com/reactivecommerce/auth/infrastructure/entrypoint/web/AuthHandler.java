@@ -19,19 +19,7 @@ import java.util.stream.Collectors;
 
 /**
  * Handler reactivo del Auth Service.
- *
- * MANEJO DE ERRORES:
- * Este handler no contiene ningún onErrorResume. Todas las excepciones
- * no manejadas son interceptadas por GlobalExceptionHandler (@Order -2),
- * que las mapea al HTTP status correcto y construye un ErrorResponse uniforme.
- *
- * Los handlers solo se responsabilizan del flujo feliz:
- *   1. Deserializar body.
- *   2. Validar campos (Bean Validation manual — RouterFunction no activa @Valid).
- *   3. Construir el Command y delegar al use case.
- *   4. Construir la ServerResponse de éxito.
- *
- * Si cualquier paso lanza una excepción, GlobalExceptionHandler la captura.
+ * Todos los errores son gestionados por GlobalExceptionHandler (@Order -2).
  */
 @Slf4j
 @Component
@@ -43,6 +31,7 @@ public class AuthHandler {
     private final RefreshTokenUseCase refreshTokenUseCase;
     private final LogoutUseCase       logoutUseCase;
     private final VerifyEmailUseCase  verifyEmailUseCase;
+    private final ListUsersUseCase    listUsersUseCase;
     private final Validator           validator;
 
     // ── Register ──────────────────────────────────────────────────────────────
@@ -53,10 +42,8 @@ public class AuthHandler {
             .flatMap(body -> validate(body)
                 .then(registerUserUseCase.execute(
                     new RegisterUserUseCase.Command(
-                        body.name(),
-                        body.email(),
-                        body.password(),
-                        UserRole.valueOf(body.role())
+                        body.name(), body.email(),
+                        body.password(), UserRole.valueOf(body.role())
                     )
                 ))
             )
@@ -113,13 +100,33 @@ public class AuthHandler {
             .switchIfEmpty(ServerResponse.status(HttpStatus.UNAUTHORIZED).build());
     }
 
-    // ── Validation helper ─────────────────────────────────────────────────────
+    // ── List users (ADMIN / MODERATOR) ────────────────────────────────────────
 
     /**
-     * Valida el DTO con Jakarta Bean Validation.
-     * Devuelve Mono.empty() si no hay violaciones.
-     * Emite IllegalArgumentException con todos los mensajes si hay alguna.
+     * GET /api/v1/users
+     *
+     * Devuelve todos los usuarios con id, nombre, email, rol, estado y fecha.
+     * Nunca expone passwordHash ni tokens.
+     *
+     * El control de acceso se aplica en dos niveles:
+     *   1. API Gateway (RoleFilter): rechaza con 403 si el rol no es ADMIN ni MODERATOR.
+     *   2. Header X-User-Role: validado aquí como segunda línea de defensa,
+     *      por si el endpoint se llama directamente sin pasar por el gateway.
      */
+    public Mono<ServerResponse> listUsers(ServerRequest request) {
+        String role = request.headers().firstHeader("X-User-Role");
+        if (role == null || (!role.equals("ADMIN") && !role.equals("MODERATOR"))) {
+            return ServerResponse.status(HttpStatus.FORBIDDEN)
+                .bodyValue(ErrorResponse.of(403, "Acceso restringido a administradores y moderadores"));
+        }
+        return listUsersUseCase.execute()
+            .map(UserListResponse::from)
+            .collectList()
+            .flatMap(users -> ServerResponse.ok().bodyValue(users));
+    }
+
+    // ── Validation helper ─────────────────────────────────────────────────────
+
     private <T> Mono<Void> validate(T body) {
         Set<ConstraintViolation<T>> violations = validator.validate(body);
         if (violations.isEmpty()) return Mono.empty();

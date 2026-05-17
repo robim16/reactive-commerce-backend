@@ -113,6 +113,19 @@ spring:
           filters:
             - name: JwtAuthFilter
 
+
+        # ── Users (admin) — listado de usuarios ─────────────────────────────
+        - id: auth-service-users
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/users
+            - Method=GET
+          filters:
+            - name: JwtAuthFilter
+            - name: RoleFilter
+              args:
+                allowedRoles: ADMIN,MODERATOR
+
       globalcors:
         corsConfigurations:
           '[/**]':

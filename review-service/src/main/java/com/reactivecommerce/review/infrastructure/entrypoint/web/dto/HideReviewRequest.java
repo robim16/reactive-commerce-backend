@@ -1,2 +1,7 @@
 package com.reactivecommerce.review.infrastructure.entrypoint.web.dto;
-public record HideReviewRequest(String reason) {}
+import jakarta.validation.constraints.NotBlank;
+
+public record HideReviewRequest(
+        @NotBlank(message = "the reason is required")
+        String reason
+) {}

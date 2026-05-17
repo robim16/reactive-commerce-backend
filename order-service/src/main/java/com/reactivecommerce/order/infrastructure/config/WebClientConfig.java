@@ -35,19 +35,27 @@ public class WebClientConfig {
     @Value("${services.product-service.base-url:lb://product-service}")
     private String productServiceBaseUrl;
 
-    @Bean("productServiceClient")
+    // 1. Builder con Load Balanced
+    @Bean
     @LoadBalanced
-    public WebClient productServiceClient(WebClient.Builder builder) {
-        HttpClient httpClient = HttpClient.create()
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 2_000)
-            .responseTimeout(Duration.ofSeconds(5))
-            .doOnConnected(conn -> conn
-                .addHandlerLast(new ReadTimeoutHandler(5, TimeUnit.SECONDS))
-                .addHandlerLast(new WriteTimeoutHandler(5, TimeUnit.SECONDS)));
+    public WebClient.Builder productServiceWebClientBuilder() {
+        return WebClient.builder();
+    }
 
-        return builder
-            .baseUrl(productServiceBaseUrl)
-            .clientConnector(new ReactorClientHttpConnector(httpClient))
-            .build();
+    // 2. WebClient construido a partir del builder anterior
+    @Bean("productServiceClient")
+    public WebClient productServiceClient(WebClient.Builder productServiceWebClientBuilder) {
+
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 2000)
+                .responseTimeout(Duration.ofSeconds(5))
+                .doOnConnected(conn -> conn
+                        .addHandlerLast(new ReadTimeoutHandler(5, TimeUnit.SECONDS))
+                        .addHandlerLast(new WriteTimeoutHandler(5, TimeUnit.SECONDS)));
+
+        return productServiceWebClientBuilder
+                .baseUrl(productServiceBaseUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
     }
 }

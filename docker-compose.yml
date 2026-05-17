@@ -241,9 +241,10 @@ services:
       SPRING_DATA_REDIS_HOST:               redis
       SPRING_DATA_REDIS_PASSWORD:           ${SPRING_DATA_REDIS_PASSWORD}
       JWT_SECRET:                           ${JWT_SECRET}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -273,6 +274,7 @@ services:
       SPRING_DATA_REDIS_HOST:               redis
       SPRING_DATA_REDIS_PASSWORD:           ${SPRING_DATA_REDIS_PASSWORD}
       JWT_SECRET:                           ${JWT_SECRET}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   product-service:
@@ -301,6 +303,7 @@ services:
       AWS_SECRET_ACCESS_KEY:                ${AWS_SECRET_ACCESS_KEY}
       AWS_S3_BUCKET:                        ${AWS_S3_BUCKET}
       AWS_ENDPOINT:                         http://localstack:4566
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   order-service:
@@ -320,6 +323,8 @@ services:
       SPRING_R2DBC_USERNAME:                ${POSTGRES_USER}
       SPRING_R2DBC_PASSWORD:                ${POSTGRES_PASSWORD}
       DB_HOST:                              postgres
+      PRODUCT_SERVICE_URL:                  lb://product-service
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   payment-service:
@@ -340,6 +345,7 @@ services:
       PAYMENT_GATEWAY_URL:                  ${PAYMENT_GATEWAY_URL}
       PAYMENT_GATEWAY_API_KEY:              ${PAYMENT_GATEWAY_API_KEY}
       SPRING_PROFILES_ACTIVE:               ${SPRING_PROFILES_ACTIVE}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   download-service:
@@ -362,6 +368,7 @@ services:
       AWS_DYNAMODB_TABLE:                   ${AWS_DYNAMODB_TABLE}
       AWS_ENDPOINT:                         http://localstack:4566
       DOWNLOAD_MAX_DOWNLOADS:               ${DOWNLOAD_MAX_DOWNLOADS}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   review-service:
@@ -378,6 +385,7 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-service:8761/eureka
       KAFKA_BOOTSTRAP_SERVERS:              kafka:29092
       SPRING_DATA_MONGODB_URI:              mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/review_db?authSource=admin
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   notification-service:
@@ -401,6 +409,7 @@ services:
       AWS_SES_FROM:                         ${AWS_SES_FROM}
       AWS_SQS_QUEUE_URL:                    ${AWS_SQS_QUEUE_URL}
       AWS_ENDPOINT:                         http://localstack:4566
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
 
   report-service:
@@ -424,4 +433,5 @@ services:
       AWS_S3_BUCKET:                        ${AWS_S3_BUCKET}
       AWS_LAMBDA_REPORT_FUNCTION:           ${AWS_LAMBDA_REPORT_FUNCTION}
       AWS_ENDPOINT:                         http://localstack:4566
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT:   http://zipkin:9411/api/v2/spans
     networks: [reactive-commerce]
